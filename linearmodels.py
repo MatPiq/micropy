@@ -1,10 +1,13 @@
 import numpy as np
 from numpy import linalg as la
 
-class VarianceEstimator:
+class Covariance:
+    def __init__(self, exog):
+        self.exog = exog
+        self.N = exog.shape[0]
+        self.K = exog.shape[1]
 
-    @staticmethod
-    def regular_variance(X: np.array, SSR)->tuple:
+    def cov(self, SSR, type:str = 'standard')->tuple:
         """Use SSR and x array to calculate different regular variance.
 
         Args:
@@ -15,23 +18,22 @@ class VarianceEstimator:
         Returns:
             tuple: [description]
         """
-        N = X.shape[0]
-        K = X.shape[1]
-        sigma = SSR / (N - K)  
-        cov =  sigma*la.inv(X.T@X)
+
+        if type == 'standard':
+            sigma, cov, se = self.standard(SSR)
+        elif type == 'fe':
+            pass
+        
+        return sigma, cov, se
+    
+    def standard(self, SSR):
+        sigma = SSR / (self.N - self.K)  
+        cov =  sigma*la.inv(self.exog.T@self.exog)
         se =  np.sqrt(cov.diagonal()).reshape(-1, 1)
         return sigma, cov, se
-    @staticmethod
-    def fe_variance(X:np.array, SSR)->tuple:
-        pass
-
-    @staticmethod
-    def re_variance():
-        pass
-
-
-    
-    def _perm(Q_T: np.array, A: np.array, t=0) -> np.array:
+        
+class Transform:
+    def _perm(self, Q_T: np.array, A: np.array, t=0) -> np.array:
         """Takes a transformation matrix and performs the transformation on 
         the given vector or matrix.
         Args:
@@ -56,53 +58,59 @@ class VarianceEstimator:
             Z = np.vstack((Z, Q_T@A[i*t: (i + 1)*t]))
         return Z
 
-class _BaseModel:
-    """Instantiates base ols model.
+class BaseModel(object):
+    """Instantiates base-model.
     Args:
-        x(np.array): Array of independent variable
+        exog(np.array): NxK Array of exogenous variables
+        dependent(np.array): Kx1 Array of the dependent variable
     """
-    def __init__(self, X:np.array, y:np.array):
-        self._X = X
-        self._y = y
-        self._N = X.shape[0]
-        self._K = X.shape[1]
+    def __init__(self, exog:np.array, dependent:np.array):
+        #TODO: Check rank condition is satisfied
+        self.exog = exog
+        self.dependent= dependent
+        self.N = exog.shape[0]
+        self.K = exog.shape[1]
+        self.transform = Transform()
+        self.cov = Covariance(self.exog)
 
-    def _estimate_ols(self) -> tuple:
-        self.b_hat = la.inv(self._X.T@self._X)@(self._X.T@self._y)
-        R2, SSR, SST = self._metrics(self.b_hat)
-        return self.b_hat, R2, SSR, SST
+    def fit(self, cov_method:str = 'standard', transform = None) -> tuple:
+        """
+        Add docstring...
+        """
+        self.b_hat = self._ols()
+        SSR = self._SSR()
+        SST = self._SST()
+        R2 = self._R2(SSR, SST)
+        sigma, cov, se = self.cov.cov(SSR = SSR, type=cov_method)
+        t_values = self.b_hat / se
+        names = ['b_hat', 'se', 'sigma', 't_values', 'R2', 'cov']
+        results = [self.b_hat, se, sigma, t_values, R2, cov]
+        return dict(zip(names, results)) 
 
     def predict(self, X_new:np.array) -> np.array:
         """Uses estimated betas to predict an array X"""
         return X_new@self.b_hat
-        
-    def _metrics(self, b_hat) -> tuple:
-        resid = self._y - self._X@b_hat
-        SSR = np.sum(resid**2)
-        SST = np.sum((self._y-self._y.mean())**2)
-        R2 = 1 - (SSR / SST)
-        return R2, SSR, SST
-
-
-class PooledOLS(_BaseModel):
-
-    _variance_estimator = VarianceEstimator()
-    def fit(self) -> dict:
-        b_hat, R2, SSR, SST =  self._estimate_ols()
-        sigma, cov, se = self._variance_estimator.regular_variance(self._X, 
-                                                                SSR = SSR)
-        t_values = b_hat/se
-        names = ['b_hat', 'se', 'sigma', 't_values', 'R2', 'cov']
-        results = [b_hat, se, sigma, t_values, R2, cov]
-        return dict(zip(names, results))
-
-class FixedEffectsOLS(_BaseModel):
-    def __init__(self, X:np.array, y:np.array):
-        self._X = X
-        self._y = y
-        self._N = X.shape[0]
-        self._K = X.shape[1]
-        self._variance = VarianceEstimator()
     
-    def fit(self):
-        pass
+    def _ols(self):
+        """
+        Estimates OLS for various models. Data can be transformer.
+        Math: (X'X)^{-1}(X'y)
+        """
+        XX = la.inv(self.exog.T@self.exog)
+        Xy = self.exog.T@self.dependent
+        return XX@Xy
+
+    def _SSR(self) -> float:
+        resid = self.dependent - self.exog@self.b_hat
+        return np.sum(resid**2)
+
+    def _SST(self)-> float:
+        return np.sum((self.dependent-self.dependent.mean())**2)
+
+    @staticmethod
+    def _R2(SSR, SST)-> float:
+        return 1 - (SSR / SST)
+  
+
+class OLS(BaseModel):
+    pass
