@@ -1,5 +1,6 @@
 import numpy as np
 from numpy import linalg as la
+from IPython.display import display, Latex
 
 class Covariance:
     def __init__(self, exog):
@@ -27,10 +28,16 @@ class Covariance:
         return sigma, cov, se
     
     def standard(self, SSR):
+        """Calculates normal standard errors"""
         sigma = SSR / (self.N - self.K)  
         cov =  sigma*la.inv(self.exog.T@self.exog)
         se =  np.sqrt(cov.diagonal()).reshape(-1, 1)
         return sigma, cov, se
+
+    def robust(self, SSR):
+        """Calculates robust standard errors"""
+        pass
+
         
 class Transform:
     def _perm(self, Q_T: np.array, A: np.array, t=0) -> np.array:
@@ -66,46 +73,47 @@ class BaseModel(object):
     """
     def __init__(self, exog:np.array, dependent:np.array):
         #TODO: Check rank condition is satisfied
-        self.exog = exog
-        self.dependent= dependent
-        self.N = exog.shape[0]
-        self.K = exog.shape[1]
-        self.transform = Transform()
-        self.cov = Covariance(self.exog)
+        self._exog = exog
+        self._dependent= dependent
+        self._N = exog.shape[0]
+        self._K = exog.shape[1]
+        self._transform = Transform()
+        self._cov = Covariance(self._exog)
 
     def fit(self, cov_method:str = 'standard', transform = None) -> tuple:
         """
         Add docstring...
         """
-        self.b_hat = self._ols()
+        self._b_hat = self._ols()
         SSR = self._SSR()
         SST = self._SST()
         R2 = self._R2(SSR, SST)
-        sigma, cov, se = self.cov.cov(SSR = SSR, type=cov_method)
-        t_values = self.b_hat / se
+        sigma, cov, se = self._cov.cov(SSR = SSR, type=cov_method)
+        t_values = self._b_hat / se
         names = ['b_hat', 'se', 'sigma', 't_values', 'R2', 'cov']
-        results = [self.b_hat, se, sigma, t_values, R2, cov]
-        return dict(zip(names, results)) 
+        values = [self._b_hat, se, sigma, t_values, R2, cov]
+        self.results = dict(zip(names, values)) 
+        return self.results
 
     def predict(self, X_new:np.array) -> np.array:
         """Uses estimated betas to predict an array X"""
-        return X_new@self.b_hat
+        return X_new@self._b_hat
     
     def _ols(self):
         """
         Estimates OLS for various models. Data can be transformer.
         Math: (X'X)^{-1}(X'y)
         """
-        XX = la.inv(self.exog.T@self.exog)
-        Xy = self.exog.T@self.dependent
+        XX = la.inv(self._exog.T@self._exog)
+        Xy = self._exog.T@self._dependent
         return XX@Xy
 
     def _SSR(self) -> float:
-        resid = self.dependent - self.exog@self.b_hat
+        resid = self._dependent - self._exog@self._b_hat
         return np.sum(resid**2)
 
     def _SST(self)-> float:
-        return np.sum((self.dependent-self.dependent.mean())**2)
+        return np.sum((self._dependent-self._dependent.mean())**2)
 
     @staticmethod
     def _R2(SSR, SST)-> float:
@@ -113,4 +121,15 @@ class BaseModel(object):
   
 
 class OLS(BaseModel):
+    
+    #@staticmethod
+    def printmodel(self):
+        """
+        Only works in iPython. Prints how beta and variance is estimates.
+        """
+        #Beta
+        display(Latex('$\hat{ \\beta } = (\mathbf{X\'X})(\mathbf{X\'y})$'))
+        #Variance
+        #TODO:add
+class FixedEffectsOLS(BaseModel):
     pass
