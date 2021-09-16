@@ -2,41 +2,43 @@ import numpy as np
 from numpy import linalg as la
 from IPython.display import display, Latex
 
-class Covariance:
-    def __init__(self, exog):
-        self.exog = exog
-        self.N = exog.shape[0]
-        self.K = exog.shape[1]
- 
-    def olscov(self, resid, covmethod:str='standard'):
+class VarianceEstimator:
+    
+    @staticmethod
+    def ols(exog, resid, covmethod:str='standard'):
         """Calculates normal standard errors"""
         
         if covmethod == 'standard':
             sigma = np.sum(resid**2) / (self.N - self.K)  
-            cov =  sigma*la.inv(self.exog.T@self.exog)
+            cov =  sigma*la.inv(exog.T@exog)
             se =  np.sqrt(cov.diagonal()).reshape(-1, 1)
             return sigma, cov, se
+        
         elif covmethod == 'robust':
             #TODO:Does not work properly
             O = np.diag(resid@resid.T)
-            XOX = self.exog.T@O@self.exog
-            XX = la.inv(self.exog.T@self.exog)
+            XOX = exog.T@O@exog
+            XX = la.inv(exog.T@exog)
             cov = XX@XOX@XX
             sd = np.sqrt(cov.diagonal()).reshape(-1,1)
             return None, cov, sd
-
-    def fecov(self, resid, covmethod:str='standard'):
+    
+    @staticmethod
+    def fe(resid, covmethod:str='standard'):
         pass
-
-    def fdcov(self, resid, covmethod: str='standard'):
+    
+    @staticmethod
+    def fd(resid, covmethod: str='standard'):
         pass
-
-    def recov(self, resid, covmethod: str='standard'):
+    
+    @staticmethod
+    def re(resid, covmethod: str='standard'):
         pass
 
             
 class Transform:
-    def _perm(self, Q_T: np.array, A: np.array, t=0) -> np.array:
+    @staticmethod
+    def _perm(Q_T: np.array, A: np.array, t=0) -> np.array:
         """Takes a transformation matrix and performs the transformation on 
         the given vector or matrix.
         Args:
@@ -68,13 +70,15 @@ class BaseModel(object):
         exog(np.array): NxK Array of exogenous variables
         dependent(np.array): Kx1 Array of the dependent variable
     """
-    def __init__(self, exog:np.array, dependent:np.array):
+    def __init__(self, exog:np.array, dependent:np.array, 
+                variance=VarianceEstimator(), transformer = Transform()):
         #TODO: Check rank condition is satisfied
         self._exog = exog
         self._dependent= dependent
         self._N = exog.shape[0]
         self._K = exog.shape[1]
-        self._cov = Covariance(exog)
+        self._variance = variance
+        self._tansformer = transformer
 
     def fit(self) -> tuple:
         """
@@ -115,7 +119,7 @@ class OLS(BaseModel):
 
     def fit(self, cov_method:str = 'standard'):
         super().fit()
-        sigma, cov, se = self._cov.olscov(self._resid, cov_method)
+        sigma, cov, se = self._variance.ols(self.exog, self._resid, cov_method)
         t_values = self._b_hat / se
         names = ['b_hat', 'se', 'sigma', 't_values', 'R2', 'cov']
         values = [self._b_hat, se, sigma, t_values, self._R2, cov]
