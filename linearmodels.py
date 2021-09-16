@@ -12,7 +12,7 @@ class VarianceEstimator:
         K = exog.shape[1]
         
         if covmethod == 'standard':
-            sigma = np.sum(resid**2) / (N - K)  
+            sigma = resid.T@resid / (N - K)  
             cov =  sigma*la.inv(exog.T@exog)
             se =  np.sqrt(cov.diagonal()).reshape(-1, 1)
             return sigma, cov, se
@@ -28,18 +28,25 @@ class VarianceEstimator:
     
     @staticmethod
     def fe(exog, resid, t, covmethod:str='standard'):
-        N = exog.shape[0]
-        K = exog.shape[1]
+        N = exog.shape[0] / t
+        K = exog.shape[1] 
 
         if covmethod == 'standard':
-            sigma = np.sum(resid**2) /(N*t-N- K)  
+            sigma = (resid.T@resid) / (N*(t-1)-K)
             cov =  sigma*la.inv(exog.T@exog)
             se =  np.sqrt(cov.diagonal()).reshape(-1, 1)
             return sigma, cov, se
     
     @staticmethod
-    def fd(resid, covmethod: str='standard'):
-        pass
+    def fd(exog, resid, covmethod: str='standard'):
+        N = exog.shape[0] 
+        K = exog.shape[1] 
+
+        if covmethod == 'standard':
+            sigma = (resid.T@resid) / (N-K)
+            cov =  sigma*la.inv(exog.T@exog)
+            se =  np.sqrt(cov.diagonal()).reshape(-1, 1)
+            return sigma, cov, se
     
     @staticmethod
     def re(resid, covmethod: str='standard'):
@@ -47,8 +54,8 @@ class VarianceEstimator:
 
             
 class Transform:
-    @staticmethod
-    def _perm(A:np.array, t=0) -> np.array:
+    
+    def _perm(self, Q_T, A:np.array, t=0) -> np.array:
         """Takes a transformation matrix and performs the transformation on 
         the given vector or matrix.
         Args:
@@ -59,9 +66,7 @@ class Transform:
             to be a 2d array.
         Returns:
             np.array: Returns the transformed vector or matrix.
-        """
-        # We can infer t from the shape of the transformation matrix.
-        Q_T = np.identity(t) - np.ones((t,t)) / t
+        """    
         
         # Initialize the numpy array
         Z = np.array([[]])
@@ -71,6 +76,20 @@ class Transform:
         for i in range(int(A.shape[0]/t)):
             Z = np.vstack((Z, Q_T@A[i*t: (i + 1)*t]))
         return Z
+    
+    def fd_trans(self, A:np.array, t=0):
+        D = np.zeros((t-1, t))
+        np.fill_diagonal(np.flip(D), 1)
+        np.fill_diagonal(D, -1)
+        
+        return self._perm(D, A, t)
+    
+    def fe_trans(self, A:np.array, t=0):
+        Q_T = np.identity(t) - np.ones((t,t)) / t
+        
+        return self._perm(Q_T, A, t)
+        
+        
 
 class BaseModel(object):
     """
@@ -102,7 +121,7 @@ class BaseModel(object):
         """Uses estimated betas to predict an array X"""
         return X_new@self._b_hat
     
-    def _estimate(self):
+    def _estimate(self) -> np.array:
         """
         Estimates OLS for various models. Data can be transformed.
         Math: (X'X)^{-1}(X'y)
@@ -115,7 +134,7 @@ class BaseModel(object):
         return self._dependent - self._exog@self._b_hat
 
     def _SSR(self) -> float:
-        return np.sum(self._resid**2)
+        return self._resid.T@self._resid
 
     def _SST(self)-> float:
         return np.sum((self._dependent-self._dependent.mean())**2)
@@ -149,8 +168,8 @@ class FixedEffectsOLS(BaseModel):
         super().__init__(exog, dependent)
         #Transform input by de-meaning
         self._t = t
-        self._exog = self._transformer._perm(exog, t)
-        self._dependent = self._transformer._perm(dependent, t)
+        self._exog = self._transformer.fe_trans(exog, t)
+        self._dependent = self._transformer.fe_trans(dependent, t)
 
     def fit(self, cov_method:str = 'standard'):
         """[summary]
@@ -163,7 +182,34 @@ class FixedEffectsOLS(BaseModel):
         """
         super().fit()
         sigma, cov, se = self._variance.fe(self._exog, self._resid,
-                                            self._t, cov_method)
+                                             self._t, cov_method)
+        t_values = self._b_hat / se
+        names = ['b_hat', 'se', 'sigma', 't_values', 'R2', 'cov']
+        values = [self._b_hat, se, sigma, t_values, self._R2, cov]
+        self.results = dict(zip(names, values)) 
+        return self.results
+    
+class FirstDifferenceOLS(BaseModel):
+    
+    def __init__(self, exog, dependent, t:int=1):
+        super().__init__(exog, dependent)
+        #Transform input by de-meaning
+        self._t = t
+        self._exog = self._transformer.fd_trans(exog, t)
+        self._dependent = self._transformer.fd_trans(dependent, t)
+
+    def fit(self, cov_method:str = 'standard'):
+        """[summary]
+
+        Args:
+            cov_method (str, optional): [description]. Defaults to 'standard'.
+
+        Returns:
+            [type]: [description]
+        """
+        super().fit()
+        sigma, cov, se = self._variance.fd(self._exog, self._resid,
+                                          cov_method)
         t_values = self._b_hat / se
         names = ['b_hat', 'se', 'sigma', 't_values', 'R2', 'cov']
         values = [self._b_hat, se, sigma, t_values, self._R2, cov]
