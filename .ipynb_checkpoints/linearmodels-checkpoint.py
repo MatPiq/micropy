@@ -1,7 +1,6 @@
 import numpy as np
-from IPython.display import Latex, display
 from numpy import linalg as la
-
+from IPython.display import display, Latex
 
 class VarianceEstimator:
     
@@ -27,15 +26,8 @@ class VarianceEstimator:
             return None, cov, sd
     
     @staticmethod
-    def fe(exog, resid, t, covmethod:str='standard'):
-        N = exog.shape[0]
-        K = exog.shape[1]
-
-        if covmethod == 'standard':
-            sigma = np.sum(resid**2) /(N*t-N- K)  
-            cov =  sigma*la.inv(exog.T@exog)
-            se =  np.sqrt(cov.diagonal()).reshape(-1, 1)
-            return sigma, cov, se
+    def fe(resid, covmethod:str='standard'):
+        pass
     
     @staticmethod
     def fd(resid, covmethod: str='standard'):
@@ -60,7 +52,7 @@ class Transform:
         Returns:
             np.array: Returns the transformed vector or matrix.
         """
-        # We can infer t from the shape of the transformation matrix.
+    # We can infer t from the shape of the transformation matrix.
         Q_T = np.identity(t) - np.ones((t,t)) / t
         
         # Initialize the numpy array
@@ -79,14 +71,15 @@ class BaseModel(object):
         exog(np.array): NxK Array of exogenous variables
         dependent(np.array): Kx1 Array of the dependent variable
     """
-    def __init__(self, exog:np.array, dependent:np.array):
+    def __init__(self, exog:np.array, dependent:np.array, 
+                variance=VarianceEstimator(), transformer = Transform()):
         #TODO: Check rank condition is satisfied
         self._exog = exog
         self._dependent= dependent
         self._N = exog.shape[0]
         self._K = exog.shape[1]
-        self._variance = VarianceEstimator()
-        self._transformer = Transform()
+        self._variance = variance
+        self._tansformer = transformer
 
     def fit(self) -> tuple:
         """
@@ -136,7 +129,8 @@ class OLS(BaseModel):
         
     #@staticmethod
     def printmodel(self):
-        """[summary]
+        """
+        Only works in iPython. Prints how beta and variance is estimates.
         """
         #Beta
         display(Latex('$\hat{ \\beta } = (\mathbf{X\'X})(\mathbf{X\'y})$'))
@@ -145,25 +139,19 @@ class OLS(BaseModel):
 
 class FixedEffectsOLS(BaseModel):
     
-    def __init__(self, exog, dependent, t:int=1):
-        super().__init__(exog, dependent)
+    def __init__(self, exog, dependent, 
+               variance=VarianceEstimator(), 
+               transformer = Transform(), t:int=1):
+        super().__init__(exog, dependent, variance=VarianceEstimator(), 
+               transformer = Transform())
+        
         #Transform input by de-meaning
-        self._t = t
-        self._exog = self._transformer._perm(exog, t)
-        self._dependent = self._transformer._perm(dependent, t)
+        self.exog = transformer._perm(exog, t)
+        self._dependent = transformer._perm(dependent, t)
 
     def fit(self, cov_method:str = 'standard'):
-        """[summary]
-
-        Args:
-            cov_method (str, optional): [description]. Defaults to 'standard'.
-
-        Returns:
-            [type]: [description]
-        """
         super().fit()
-        sigma, cov, se = self._variance.fe(self._exog, self._resid,
-                                            self._t, cov_method)
+        sigma, cov, se = self._variance.ols(self._exog, self._resid, cov_method)
         t_values = self._b_hat / se
         names = ['b_hat', 'se', 'sigma', 't_values', 'R2', 'cov']
         values = [self._b_hat, se, sigma, t_values, self._R2, cov]
