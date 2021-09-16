@@ -7,38 +7,34 @@ class Covariance:
         self.exog = exog
         self.N = exog.shape[0]
         self.K = exog.shape[1]
-
-    def cov(self, SSR, type:str = 'standard')->tuple:
-        """Use SSR and x array to calculate different regular variance.
-
-        Args:
-            SSR (float): SSR
-            x (np.array): Array of independent variables.
-        Raises:
-            Exception: [description]
-        Returns:
-            tuple: [description]
-        """
-
-        if type == 'standard':
-            sigma, cov, se = self.standard(SSR)
-        elif type == 'fe':
-            pass
-        
-        return sigma, cov, se
-    
-    def standard(self, SSR):
+ 
+    def olscov(self, resid, covmethod:str='standard'):
         """Calculates normal standard errors"""
-        sigma = SSR / (self.N - self.K)  
-        cov =  sigma*la.inv(self.exog.T@self.exog)
-        se =  np.sqrt(cov.diagonal()).reshape(-1, 1)
-        return sigma, cov, se
+        
+        if covmethod == 'standard':
+            sigma = np.sum(resid**2) / (self.N - self.K)  
+            cov =  sigma*la.inv(self.exog.T@self.exog)
+            se =  np.sqrt(cov.diagonal()).reshape(-1, 1)
+            return sigma, cov, se
+        elif covmethod == 'robust':
+            #TODO:Does not work properly
+            O = np.diag(resid@resid.T)
+            XOX = self.exog.T@O@self.exog
+            XX = la.inv(self.exog.T@self.exog)
+            cov = XX@XOX@XX
+            sd = np.sqrt(cov.diagonal()).reshape(-1,1)
+            return None, cov, sd
 
-    def robust(self, SSR):
-        """Calculates robust standard errors"""
+    def fecov(self, resid, covmethod:str='standard'):
         pass
 
-        
+    def fdcov(self, resid, covmethod: str='standard'):
+        pass
+
+    def recov(self, resid, covmethod: str='standard'):
+        pass
+
+            
 class Transform:
     def _perm(self, Q_T: np.array, A: np.array, t=0) -> np.array:
         """Takes a transformation matrix and performs the transformation on 
@@ -66,7 +62,8 @@ class Transform:
         return Z
 
 class BaseModel(object):
-    """Instantiates base-model.
+    """
+        Instantiates base-model. Should not be called directly.
     Args:
         exog(np.array): NxK Array of exogenous variables
         dependent(np.array): Kx1 Array of the dependent variable
@@ -77,51 +74,54 @@ class BaseModel(object):
         self._dependent= dependent
         self._N = exog.shape[0]
         self._K = exog.shape[1]
-        self._transform = Transform()
-        self._cov = Covariance(self._exog)
+        self._cov = Covariance(exog)
 
-    def fit(self, cov_method:str = 'standard', transform = None) -> tuple:
+    def fit(self) -> tuple:
         """
         Add docstring...
         """
-        self._b_hat = self._ols()
-        SSR = self._SSR()
-        SST = self._SST()
-        R2 = self._R2(SSR, SST)
-        sigma, cov, se = self._cov.cov(SSR = SSR, type=cov_method)
-        t_values = self._b_hat / se
-        names = ['b_hat', 'se', 'sigma', 't_values', 'R2', 'cov']
-        values = [self._b_hat, se, sigma, t_values, R2, cov]
-        self.results = dict(zip(names, values)) 
-        return self.results
+        self._b_hat = self._estimate()
+        self._resid = self._resid()
+        self._SSR = self._SSR()
+        self._SST = self._SST()
+        self._R2 = self._R2()
 
     def predict(self, X_new:np.array) -> np.array:
         """Uses estimated betas to predict an array X"""
         return X_new@self._b_hat
     
-    def _ols(self):
+    def _estimate(self):
         """
-        Estimates OLS for various models. Data can be transformer.
+        Estimates OLS for various models. Data can be transformed.
         Math: (X'X)^{-1}(X'y)
         """
         XX = la.inv(self._exog.T@self._exog)
         Xy = self._exog.T@self._dependent
         return XX@Xy
+    
+    def _resid(self) -> float:
+        return self._dependent - self._exog@self._b_hat
 
     def _SSR(self) -> float:
-        resid = self._dependent - self._exog@self._b_hat
-        return np.sum(resid**2)
+        return np.sum(self._resid**2)
 
     def _SST(self)-> float:
         return np.sum((self._dependent-self._dependent.mean())**2)
 
-    @staticmethod
-    def _R2(SSR, SST)-> float:
-        return 1 - (SSR / SST)
+    def _R2(self)-> float:
+        return 1 - (self._SSR / self._SST)
   
-
 class OLS(BaseModel):
-    
+
+    def fit(self, cov_method:str = 'standard'):
+        super().fit()
+        sigma, cov, se = self._cov.olscov(self._resid, cov_method)
+        t_values = self._b_hat / se
+        names = ['b_hat', 'se', 'sigma', 't_values', 'R2', 'cov']
+        values = [self._b_hat, se, sigma, t_values, self._R2, cov]
+        self.results = dict(zip(names, values)) 
+        return self.results
+        
     #@staticmethod
     def printmodel(self):
         """
@@ -131,5 +131,9 @@ class OLS(BaseModel):
         display(Latex('$\hat{ \\beta } = (\mathbf{X\'X})(\mathbf{X\'y})$'))
         #Variance
         #TODO:add
+
 class FixedEffectsOLS(BaseModel):
-    pass
+    
+    def __init__(self, exog, dependent):
+        super().__init__(exog, dependent)
+        self.transformer = Transform()
