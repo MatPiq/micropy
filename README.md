@@ -1,4 +1,4 @@
-Implementation of estimators taught in AØKA08084U Advanced Microeconometrics at University of Copenhagen. Each estimator is a class and falls under one of the following categories:
+Implementation of estimators taught in AØKA08084U Advanced Microeconometrics at University of Copenhagen. Each estimator is a class and is structured as:
 
 1. Linear models
     1. OLS
