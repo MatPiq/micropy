@@ -6,5 +6,4 @@ Implementation of estimators taught in AØKA08084U Advanced Microeconometrics at
     3. First Difference
     4. Random Effects
 2. High dimensional models
-    1. LASSO
 3. Non-linear models
