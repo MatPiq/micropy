@@ -1,14 +1,12 @@
 import numpy as np
 from numpy import linalg as la
-from numpy.lib.function_base import cov
 from tabulate import tabulate
+import pandas as pd
 
-class PLM:
-   
+class Plm:
     def __init__(self, dependent:np.array, exog:np.array, model:str = 'pools',
                  t:int = 1, cov_method=''):
         """Linear Panel models
-
         Args:
             dependent (np.array): N*1 vector of the dependent variable
             exog (np.array): N*K matrix of exogenous variables
@@ -142,6 +140,53 @@ class PLM:
         if _lambda: 
             print(f'\u03bb = {_lambda.item():.3f}')
 
+class FormulaPlm(Plm):
+    
+    def __init__(self, formula:str, model:str, cov_method:str='',
+                 include_intercept:bool=False, data:pd.DataFrame=None):
+        """Fit Plm using formula notation.
+        Args:
+            formula (str): example "dependent ~ exog_1 + exog_2
+            data (pd.DataFrame): dataframe containing the data for model.
+            Must have multiindex of (1) obsid, (2) time.
+        """
+        dependent, exog, t = self._parse_formula(formula, data, include_intercept)
+        
+        if model == 're':
+            lam = self._get_lam(dependent, exog, t, cov_method)
+        else:
+            lam = None
+        self.cov_method = cov_method
+        self._dependent = Transform(dependent, t, model, lam).perm()
+        self._exog = Transform(exog, t, model, lam).perm()
+        self._variance = VarianceEstimator(self._exog, t, model)
+        
+    def _parse_formula(self, formula, data, include_intercept):
+        """Parse formula"""
+        assert type(data) == pd.core.frame.DataFrame,'Data must Pandas dataframe object'
+        assert type(data.index) == pd.core.indexes.multi.MultiIndex,'Data must contain multi-index'
+        N = len(np.unique([i[0] for i in data.index]))
+        t = len(np.unique([i[1] for i in data.index]))
+        assert data.shape[0] == N*t, 'Data is not a balanced panel'
+        
+        y, X = formula.replace(' ','').split('~')
+        X = X.split('+')
+        for x_i in X:
+            if '*' in x_i:
+                x1,x2 = x_i.split('*')
+                data[x_i] = data[x1] * data[x2]
+            elif '^' in x_i:
+                val, grade = x_i.split('^')
+                data[x_i] = data[val]**int(grade)
+        dependent = data[y].values.reshape(-1,1)
+        exog = data[X].values
+        
+        if include_intercept:
+            const = np.ones((N*t,1))
+            exog = np.column_stack((const, exog))
+                
+        return dependent, exog, t
+        
 class VarianceEstimator:
     def __init__(self, exog:np.array, t:int, model:str = ''):
         """Calculates the variance"""
