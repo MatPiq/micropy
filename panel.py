@@ -3,6 +3,7 @@ from numpy import linalg as la
 from tabulate import tabulate
 import pandas as pd
 import re
+import scipy.stats as stats
 
 class Plm:
     def __init__(self, dependent:np.array, exog:np.array, model:str = 'pools',
@@ -38,7 +39,7 @@ class Plm:
         self._exog = Transform(exog, t, model, lam).perm()
         self._variance = VarianceEstimator(self._exog, t, model)
         self._model = model
-        self._N = self._exog.shape[0]
+        self._N, self._k = self._exog.shape
         self._t = t
     
     def fit(self):
@@ -50,13 +51,15 @@ class Plm:
         self._SSR = self._SSR()
         self._SST = self._SST()
         self._R2 = self._R2()
+        self._adj_R2 = self._adjusted_R2()
         sigma2, cov, se = self._variance.var(self._SSR)
         if self.cov_method == 'robust':
             cov, se = self._variance.robust_var(self._resid)
 
         t_values = self._b_hat / se
-        names = ['b_hat', 'se', 'sigma2', 't_values', 'R2', 'cov']
-        values = [self._b_hat, se, sigma2, t_values, self._R2, cov]
+        p_values = stats.t.sf(np.abs(t_values), self._N-1)*2
+        names = ['b_hat', 'se', 'sigma2', 't_values', 'p_values', 'R2', 'adj_R2','cov']
+        values = [self._b_hat, se, sigma2, t_values, p_values,self._R2, self._adj_R2, cov]
         self.results = dict(zip(names, values)) 
         return self
     
@@ -84,6 +87,8 @@ class Plm:
 
     def _R2(self)-> float:
         return 1.0 - (self._SSR / self._SST)
+    def _adjusted_R2(self) ->float:
+        return 1.0 - ((1-self._R2)*(self._N-1) / (self._N - self._k - 1))
     
     def _get_lam(self, dependent, exog, t, cov_method):
         sigma2_w = Plm(dependent, exog, 'be', t, cov_method).fit().results['sigma2']
@@ -126,25 +131,39 @@ class Plm:
         
         # Create table, using the label for x to get a variable's coefficient,
         # standard error and t_value.
+        def p_stars(pval):
+            if pval < 0.01:
+                return "***"
+            elif pval < 0.05:
+                return "**"
+            elif pval < 0.1:
+                return "*"
+            else:
+                return " "
+        
         table = []
         for i, name in enumerate(label_x):
             row = [
                 name, 
-                self.results.get('b_hat')[i], 
+                str(round(self.results.get('b_hat')[i][0],3)) \
+                +p_stars(self.results.get('p_values')[i]), 
                 self.results.get('se')[i], 
                 self.results.get('t_values')[i]
             ]
             table.append(row)
         
-        # Print the table
-        print('-'*33)
-        print(' '*12, title)
-        print('-'*33)
+        tab = tabulate(table, headers, **kwargs, 
+                       floatfmt=decimals)
+        tlen = len(tab.split('\n')[0])    
+        print(f"{' '*(int(tlen/2)-int(len(title)/2)-2)} {title}")
+        print('_'*tlen)
         print(f"Dependent variable: {label_y}\n")
-        print(tabulate(table, headers, **kwargs, floatfmt=decimals))
-        print('-'*33)
+        #print('_'*tlen)
+        print(tab)
+        #print('_'*tlen)
         # Print extra statistics of the model.
         print(f"R\u00b2 = {self.results.get('R2').item():.3f}")
+        print(f"Adj R\u00b2 = {self.results.get('adj_R2').item():.3f}")
         print(f"\u03C3\u00b2 = {self.results.get('sigma2').item():.3f}")
         
         models = {'fe':'Fixed effects', 'pools':'Pooled OLS',
@@ -156,9 +175,10 @@ class Plm:
         print(f"No. timeperiods: {self._t}")
         if _lambda: 
             print(f'\u03bb = {_lambda.item():.3f}')
-        print('-'*33)
+        print('_'*tlen)
+        print('Note: ∗p<0.1;∗∗p<0.05;∗∗∗p<0.01')
         if self.cov_method == 'robust':
-            print(f'Note: Heteroscedastic robust standard errors.')
+            print(f'Heteroscedastic robust standard errors.')
         
 
 class PlmFormula(Plm):
@@ -183,7 +203,7 @@ class PlmFormula(Plm):
         self._exog = Transform(exog, t, model, lam).perm()
         self._variance = VarianceEstimator(self._exog, t, model)
         self._model = model
-        self._N = self._exog.shape[0]
+        self._N, self._k = self._exog.shape
         self._t = t
         
     def _parse_formula(self, formula, data, include_intercept):
@@ -201,6 +221,8 @@ class PlmFormula(Plm):
         y, X = formula.replace(' ','').split('~')
         X = X.split('+')
         for v in X:
+            assert v in data.columns, \
+                f'Variable {v} does not exist in dataframe.'
             if '*' in v:
                 v1,v2 = v.split('*')
                 data[v] = data[v1] * data[v2]
