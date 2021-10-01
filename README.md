@@ -3,7 +3,7 @@ Python implementation of estimators taught in AØKA08084U Advanced Microeconomet
 Each estimator is a class and is structured as:
 
 1. Linear panel models
-    1. POLS
+    1. Pooled OLS
     2. Fixed Effects
     3. First Difference
     4. Random Effects
