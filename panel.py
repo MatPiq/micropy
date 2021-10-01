@@ -161,7 +161,7 @@ class Plm:
         print(f"Dependent variable: {label_y}\n")
         #print('_'*tlen)
         print(tab)
-        print(chr(8254)*tlen)
+        print('_'*tlen, '\n')
         # Print extra statistics of the model.
         print(f"R\u00b2 = {self.results.get('R2').item():.3f}")
         print(f"Adj R\u00b2 = {self.results.get('adj_R2').item():.3f}")
@@ -170,7 +170,6 @@ class Plm:
         models = {'fe':'Fixed effects', 'pools':'Pooled OLS',
                   'fd':'First-difference', 'be':'Between estimator',
                   're':'Random effects'}
-        
         print(f"Model: {models[self._model]}")
         print(f"No. observations: {self._N}")
         print(f"No. timeperiods: {self._t}")
