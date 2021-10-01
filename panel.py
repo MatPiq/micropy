@@ -2,6 +2,7 @@ import numpy as np
 from numpy import linalg as la
 from tabulate import tabulate
 import pandas as pd
+import re
 
 class Plm:
     def __init__(self, dependent:np.array, exog:np.array, model:str = 'pools',
@@ -19,6 +20,9 @@ class Plm:
             t (int, optional): Amount of timeperiods in data. Defaults to 1.
             cov_method (str, optional): Type of covariance matrix to be calculated. Defaults to ''.
         """
+        models = ('pools', 'fd', 'fe', 're', 'be')
+        assert model in models, \
+            f'{model} is not a valid model name. Must be in {models}'
         assert dependent.ndim == 2, 'Input y must be 2-dimensional'
         assert exog.ndim == 2, 'Input x must be 2-dimensional'
         assert dependent.shape[1] == 1, 'y must be a column vector'
@@ -33,6 +37,9 @@ class Plm:
         self._dependent = Transform(dependent, t, model, lam).perm()
         self._exog = Transform(exog, t, model, lam).perm()
         self._variance = VarianceEstimator(self._exog, t, model)
+        self._model = model
+        self._N = self._exog.shape[0]
+        self._t = t
     
     def fit(self):
         """
@@ -78,10 +85,9 @@ class Plm:
     def _R2(self)-> float:
         return 1.0 - (self._SSR / self._SST)
     
-    #@classmethod
     def _get_lam(self, dependent, exog, t, cov_method):
-        sigma2_w = PLM(dependent, exog, 'be', t, cov_method).fit().results['sigma2']
-        sigma2_u = PLM(dependent, exog, 'fe', t, cov_method).fit().results['sigma2']
+        sigma2_w = Plm(dependent, exog, 'be', t, cov_method).fit().results['sigma2']
+        sigma2_u = Plm(dependent, exog, 'fe', t, cov_method).fit().results['sigma2']
         return 1 - np.sqrt(sigma2_u / (sigma2_u + (t-1)*sigma2_w))
     
     def summary(self,
@@ -108,11 +114,12 @@ class Plm:
             _lambda (float, optional): Only used with Random effects. 
             Defaults to None.
         """
-        if not self.results:
-            raise Exception(f'Model has not been fitted on data yet!')
+        assert self.results
+        if self.labels:
+             label_y, label_x = self.labels
+        elif labels is not None:
+            label_y, label_x = labels
         
-        # Unpack the labels
-        label_y, label_x = labels
         assert isinstance(label_x, list), f'label_x must be a list (second part of the tuple, labels)'
         assert len(label_x) == self.results['b_hat'].size, \
         f'Number of labels for x should be the same as number of estimated parameters'
@@ -130,28 +137,43 @@ class Plm:
             table.append(row)
         
         # Print the table
-        print(title)
+        print('-'*33)
+        print(' '*12, title)
+        print('-'*33)
         print(f"Dependent variable: {label_y}\n")
         print(tabulate(table, headers, **kwargs, floatfmt=decimals))
-        
+        print('-'*33)
         # Print extra statistics of the model.
         print(f"R\u00b2 = {self.results.get('R2').item():.3f}")
         print(f"\u03C3\u00b2 = {self.results.get('sigma2').item():.3f}")
+        
+        models = {'fe':'Fixed effects', 'pools':'Pooled OLS',
+                  'fd':'First-difference', 'be':'Between estimator',
+                  're':'Random effects'}
+        
+        print(f"Model: {models[self._model]}")
+        print(f"No. observations: {self._N}")
+        print(f"No. timeperiods: {self._t}")
         if _lambda: 
             print(f'\u03bb = {_lambda.item():.3f}')
+        print('-'*33)
+        if self.cov_method == 'robust':
+            print(f'Note: Heteroscedastic robust standard errors.')
+        
 
-class FormulaPlm(Plm):
+class PlmFormula(Plm):
     
     def __init__(self, formula:str, model:str, cov_method:str='',
                  include_intercept:bool=False, data:pd.DataFrame=None):
         """Fit Plm using formula notation.
         Args:
-            formula (str): example "dependent ~ exog_1 + exog_2
+            formula (str): example "dependent ~ exog_1 + exog_2. Also understands
+            interactions and polynomials e.g. exog_1*exog_2 or exog_1^2.
             data (pd.DataFrame): dataframe containing the data for model.
             Must have multiindex of (1) obsid, (2) time.
         """
-        dependent, exog, t = self._parse_formula(formula, data, include_intercept)
-        
+        dependent, exog, t, self.labels = self._parse_formula(formula, data, include_intercept)
+        self._t, self._nobs = t, exog.shape[0]
         if model == 're':
             lam = self._get_lam(dependent, exog, t, cov_method)
         else:
@@ -160,32 +182,42 @@ class FormulaPlm(Plm):
         self._dependent = Transform(dependent, t, model, lam).perm()
         self._exog = Transform(exog, t, model, lam).perm()
         self._variance = VarianceEstimator(self._exog, t, model)
+        self._model = model
+        self._N = self._exog.shape[0]
+        self._t = t
         
     def _parse_formula(self, formula, data, include_intercept):
         """Parse formula"""
-        assert type(data) == pd.core.frame.DataFrame,'Data must Pandas dataframe object'
-        assert type(data.index) == pd.core.indexes.multi.MultiIndex,'Data must contain multi-index'
+        
+        #TODO: assert correct format assert re.match(r'')
+        assert type(data) == pd.core.frame.DataFrame, \
+        'Data must Pandas dataframe object'
+        assert type(data.index) == pd.core.indexes.multi.MultiIndex, \
+        'Data must contain multi-index'
         N = len(np.unique([i[0] for i in data.index]))
         t = len(np.unique([i[1] for i in data.index]))
         assert data.shape[0] == N*t, 'Data is not a balanced panel'
         
         y, X = formula.replace(' ','').split('~')
         X = X.split('+')
-        for x_i in X:
-            if '*' in x_i:
-                x1,x2 = x_i.split('*')
-                data[x_i] = data[x1] * data[x2]
-            elif '^' in x_i:
-                val, grade = x_i.split('^')
-                data[x_i] = data[val]**int(grade)
+        for v in X:
+            if '*' in v:
+                v1,v2 = v.split('*')
+                data[v] = data[v1] * data[v2]
+            elif '^' in v:
+                vp, grade = v.split('^')
+                data[v] = data[vp]**int(grade)
         dependent = data[y].values.reshape(-1,1)
         exog = data[X].values
         
         if include_intercept:
             const = np.ones((N*t,1))
             exog = np.column_stack((const, exog))
-                
-        return dependent, exog, t
+            X.insert(0, 'intercept')
+        
+        labels = (y, X)
+           
+        return dependent, exog, t, labels
         
 class VarianceEstimator:
     def __init__(self, exog:np.array, t:int, model:str = ''):
@@ -213,7 +245,6 @@ class VarianceEstimator:
     
     def robust_var(self,residual: np.array) -> tuple:
         """Calculates the robust variance estimator"""
-        
         # If only cross sectional, we can easily use the diagonal.
         if not self.t:
             Ainv = la.inv(self.exog.T@self.exog)
