@@ -157,10 +157,11 @@ class Plm:
         tlen = len(tab.split('\n')[0])    
         print(f"{' '*(int(tlen/2)-int(len(title)/2)-2)} {title}")
         print('_'*tlen)
+        print(chr(8254)*tlen)
         print(f"Dependent variable: {label_y}\n")
         #print('_'*tlen)
         print(tab)
-        #print('_'*tlen)
+        print(chr(8254)*tlen)
         # Print extra statistics of the model.
         print(f"R\u00b2 = {self.results.get('R2').item():.3f}")
         print(f"Adj R\u00b2 = {self.results.get('adj_R2').item():.3f}")
@@ -176,6 +177,7 @@ class Plm:
         if _lambda: 
             print(f'\u03bb = {_lambda.item():.3f}')
         print('_'*tlen)
+        print(chr(8254)*tlen)
         print('Note: ∗p<0.1;∗∗p<0.05;∗∗∗p<0.01')
         if self.cov_method == 'robust':
             print(f'Heteroscedastic robust standard errors.')
