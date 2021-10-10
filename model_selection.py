@@ -3,6 +3,7 @@ import numpy as np
 import numpy.linalg as la
 from scipy.stats import chi2
 from tabulate import tabulate
+import LinearModelsWeek3_post as lm
 from panel import Plm
 
 def wald_test(model):
@@ -10,21 +11,26 @@ def wald_test(model):
     cov = model.results['cov']
     R = np.ones(b_hat.shape[0]).reshape(1,-1)
     W = (R@b_hat-1).T@la.inv(R@cov@R.T)@(R@b_hat-1)
+    print(f'Wald test statistic: {W[0][0]:.5f}')
     print(f'P-value on Wald test: {chi2(1).pdf(W)[0][0]:.5f}')
 
-def serial_correlation(e,t:int):
+def serial_correlation(y,X,t:int):
     """
-    Evaluates serial correlation between...
+    Evaluates if serial correlation exists.
     """
-    
+    t = t-1
+    b_hat = lm.est_ols(y, X)
+    e = y - X@b_hat
     L_T = np.eye(t, k=-1)
     L_T = L_T[1:]
-    e_l = perm(L_T, e)
+    e_l = lm.perm(L_T, e)
     e = np.delete(e, list(range(0, e.shape[0], t)), axis=0)
-    #e = np.delete(e, list(range(0, e.shape[0], t-1)), axis=0)
-    return estimate(e, e_l)
+    label_ye = 'OLS residual, e\u1d62\u209c'
+    label_e = ['e\u1d62\u209c\u208B\u2081']
+    Plm(dependent=e, exog=e_l, model='pools').fit().summary(labels=(label_ye, label_e))
     
-def hausman_test(fe, re, print_summary=False):
+    
+def hausman_test(fe, re, print_summary=False, headers = ['b_fe', 'b_fd']):
     
     #Check if re include time invariants
     shape_diff = len(re.results['b_hat']) - len(fe.results['b_hat'])
@@ -51,7 +57,6 @@ def hausman_test(fe, re, print_summary=False):
             table.append(row)
 
         print(tabulate(
-            table, headers=['b_fe', 'b_re', 'b_diff'], floatfmt='.4f'
+            table, headers= headers+['b_diff'], floatfmt='.4f'
             ))
         print(f'The Hausman test statistic is: {H.item():.2f}, with p-value: {p_val:.2f}.')
-    

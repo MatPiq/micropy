@@ -87,6 +87,7 @@ class Plm:
 
     def _R2(self)-> float:
         return 1.0 - (self._SSR / self._SST)
+    
     def _adjusted_R2(self) ->float:
         return 1.0 - ((1-self._R2)*(self._N-1) / (self._N - self._k - 1))
     
@@ -120,9 +121,10 @@ class Plm:
             Defaults to None.
         """
         assert self.results
-        if self.labels:
-             label_y, label_x = self.labels
-        elif labels is not None:
+
+        if hasattr(self, 'labels'):
+            label_y, label_x = self.labels
+        else:
             label_y, label_x = labels
         
         assert isinstance(label_x, list), f'label_x must be a list (second part of the tuple, labels)'
@@ -217,7 +219,7 @@ class PlmFormula(Plm):
         'Data must contain multi-index'
         N = len(np.unique([i[0] for i in data.index]))
         t = len(np.unique([i[1] for i in data.index]))
-        assert data.shape[0] == N*t, 'Data is not a balanced panel'
+        #assert data.shape[0] == N*t, 'Data is not a balanced panel'
         
         y, X = formula.replace(' ','').split('~')
         X = X.split('+')
@@ -229,7 +231,8 @@ class PlmFormula(Plm):
                 data[v] = data[v1] * data[v2]
             elif '^' in v:
                 vp, grade = v.split('^')
-                data[v] = data[vp]**int(grade)
+                data[v] = data[vp]**int(grade) 
+            
         dependent = data[y].values.reshape(-1,1)
         exog = data[X].values
         

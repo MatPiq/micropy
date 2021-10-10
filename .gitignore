@@ -1,3 +1,5 @@
 
 *.pyc
 *__pycache__/
+projects/project_1/.ipynb_checkpoints/project_1-checkpoint.ipynb
+projects/project_1/.Rhistory
