@@ -5,6 +5,7 @@ import pandas as pd
 import re
 import scipy.stats as stats
 
+
 class Plm:
     def __init__(self, dependent:np.array, exog:np.array, model:str = 'pools',
                  t:int = 1, cov_method=''):
