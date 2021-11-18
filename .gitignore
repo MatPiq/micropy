@@ -3,3 +3,7 @@
 *__pycache__/
 projects/project_1/.ipynb_checkpoints/project_1-checkpoint.ipynb
 projects/project_1/.Rhistory
+projects/project_1/.ipynb_checkpoints/project_1_analysis-checkpoint.ipynb
+*.csv
+*.pdf
+projects/project_2/graphs/map.eps
