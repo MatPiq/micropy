@@ -11,6 +11,10 @@ This repository contains mandatory assigments written together with Sebastian HÃ
     3. `The Belloni-Chen-Chernozhukov-Hansen rule` for selecting penalty level, see: Belloni, A., Chen, D., Chernozhukov, V., & Hansen, C. (2012). Sparse models and methodsfor optimal instruments with an application to eminent domain.Econometrica,80(6), 2369â€“2429
     4. `The Bickel-Ritov-Tsybakov rule` for selecting penalty level, see: Bickel, P. J., Ritov, Y. A., & Tsybakov, A. B. (2009). Simultaneous analysis of Lasso and Dantzig selector. The Annals of statistics, 37(4), 1705-1732.
 4. `Non-linear models`
+    1. `Logit`
+    2. `Probit`
+    3. `Conditional Logit`
+    4. `Multinomial Logit`
 
 And some statistical tests:
 
